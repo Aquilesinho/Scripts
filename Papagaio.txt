@@ -1,0 +1,216 @@
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ChatMirrorGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 300, 0, 400)
+Frame.Position = UDim2.new(0, 50, 0, 100)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.BorderSizePixel = 0
+Frame.Parent = ScreenGui
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Text = "Escolha um jogador"
+Title.TextSize = 18
+Title.Parent = Frame
+
+local AllButton = Instance.new("TextButton")
+AllButton.Position = UDim2.new(0, 10, 0, 50)
+AllButton.Size = UDim2.new(1, -20, 0, 35)
+AllButton.BackgroundColor3 = Color3.fromRGB(80, 60, 140)
+AllButton.TextColor3 = Color3.new(1, 1, 1)
+AllButton.Text = "TODOS"
+AllButton.TextSize = 16
+AllButton.Parent = Frame
+
+local List = Instance.new("ScrollingFrame")
+List.Position = UDim2.new(0, 10, 0, 95)
+List.Size = UDim2.new(1, -20, 0, 290)
+List.BackgroundTransparency = 1
+List.BorderSizePixel = 0
+List.CanvasSize = UDim2.new(0, 0, 0, 0)
+List.Parent = Frame
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0, 5)
+Layout.Parent = List
+
+local selectedPlayer = nil
+local allPlayers = false
+local enviando = false
+
+local function updateCanvas()
+	List.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 10)
+end
+
+local function createPlayerButton(player)
+	local Button = Instance.new("TextButton")
+
+	Button.Size = UDim2.new(1, 0, 0, 35)
+	Button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	Button.TextColor3 = Color3.new(1, 1, 1)
+	Button.Text = player.DisplayName .. " (@" .. player.Name .. ")"
+	Button.TextSize = 16
+	Button.Parent = List
+
+	Button.MouseButton1Click:Connect(function()
+		selectedPlayer = player
+		allPlayers = false
+
+		Title.Text = "Seguindo: " .. player.DisplayName
+
+		for _, otherButton in ipairs(List:GetChildren()) do
+			if otherButton:IsA("TextButton") then
+				otherButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+			end
+		end
+
+		Button.BackgroundColor3 = Color3.fromRGB(70, 120, 200)
+		AllButton.BackgroundColor3 = Color3.fromRGB(80, 60, 140)
+	end)
+end
+
+AllButton.MouseButton1Click:Connect(function()
+	allPlayers = true
+	selectedPlayer = nil
+
+	Title.Text = "Seguindo: TODOS"
+
+	AllButton.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
+
+	for _, button in ipairs(List:GetChildren()) do
+		if button:IsA("TextButton") then
+			button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		end
+	end
+end)
+
+local function rebuildPlayers()
+	for _, child in ipairs(List:GetChildren()) do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			createPlayerButton(player)
+		end
+	end
+
+	task.wait()
+	updateCanvas()
+end
+
+Players.PlayerAdded:Connect(function()
+	rebuildPlayers()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	if player == selectedPlayer then
+		selectedPlayer = nil
+		Title.Text = "Escolha um jogador"
+	end
+
+	rebuildPlayers()
+end)
+
+local function enviarMensagem(texto)
+	if enviando then
+		return
+	end
+
+	if texto == "" then
+		return
+	end
+
+	enviando = true
+
+	task.wait(0.05)
+	
+	local chat = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+
+	if chat then
+		chat:SendAsync(texto)
+	end
+
+	task.wait(0.2)
+
+	enviando = false
+end
+
+TextChatService.MessageReceived:Connect(function(message)
+	if not message.TextSource then
+		return
+	end
+
+	local sender = Players:GetPlayerByUserId(message.TextSource.UserId)
+
+	if not sender or sender == LocalPlayer then
+		return
+	end
+
+	if allPlayers then
+		enviarMensagem(message.Text)
+		return
+	end
+
+	if selectedPlayer and sender == selectedPlayer then
+		enviarMensagem(message.Text)
+	end
+end)
+
+local dragging = false
+local dragStart
+local startPosition
+
+Title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPosition = Frame.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+Title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		local connection
+
+		connection = UserInputService.InputChanged:Connect(function(changedInput)
+			if changedInput == input and dragging then
+				local delta = changedInput.Position - dragStart
+
+				Frame.Position = UDim2.new(
+					startPosition.X.Scale,
+					startPosition.X.Offset + delta.X,
+					startPosition.Y.Scale,
+					startPosition.Y.Offset + delta.Y
+				)
+			end
+		end)
+
+		task.delay(0.1, function()
+			if connection then
+				connection:Disconnect()
+			end
+		end)
+	end
+end)
+
+rebuildPlayers()
